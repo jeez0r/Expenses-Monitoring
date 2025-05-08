@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="button_selected">#007aad</color>
+    <color name="selected_date_text">#FFFFFF</color>
+    <color name="default_date_bg">#fffbfc</color>
+    <color name="default_date_text">#000000</color>
+    <color name="future_date_bg">#E0E0E0</color>
+    <color name="future_date_text">#9E9E9E</color>
+    <color name="transparent">#009E9E9E</color>
+    <color name="orange">#FFAB00</color>
+
+    <color name="textspend">#DD2C00</color>
+
+    <style name="AmountButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:layout_margin">4dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="strokeColor">@color/button_selected</item>
+
+    </style>
+</resources>
