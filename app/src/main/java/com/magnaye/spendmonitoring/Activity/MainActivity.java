@@ -32,11 +32,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
+import com.google.android.material.snackbar.Snackbar;
 import com.magnaye.spendmonitoring.Adapter.DateAdapter;
 import com.magnaye.spendmonitoring.Adapter.SpentAdapter;
 import com.magnaye.spendmonitoring.DatabaseHelper.DatabaseClient;
@@ -47,6 +49,7 @@ import com.magnaye.spendmonitoring.Model.Spent;
 import com.magnaye.spendmonitoring.Module.DateRangeDialog;
 import com.magnaye.spendmonitoring.R;
 import com.magnaye.spendmonitoring.Module.AddSpentWidgetProvider;
+import com.magnaye.spendmonitoring.ViewModel.SpentViewModel;
 
 import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
@@ -62,7 +65,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements DateAdapter.OnDateClickListener {
+public class MainActivity extends AppCompatActivity implements DateAdapter.OnDateClickListener, SpentAdapter.OnSpentActionListener {
     private RecyclerView rvDates;
     private DateAdapter dateAdapter;
     private List<CalendarDate> dates = new ArrayList<>();
@@ -78,7 +81,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
     private RadioGroup rg_rgInterval;
 
     String interval = "daily";
-    TextView tvTotalSpent,toolbarTitle,toolbarTitle1;
+    TextView tvTotalSpent, toolbarTitle, toolbarTitle1;
     FrameLayout container, container1;
 
     private TextView tvBudgetAmount, tvBudgetRemaining;
@@ -92,7 +95,8 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
     Toolbar toolbar;
 
-    // In your MainActivity.java
+    private SpentViewModel viewModel;
+
     // In your MainActivity.java
     public static void updateWidget(Context context) {
         Intent intent = new Intent(context, AddSpentWidgetProvider.class);
@@ -108,6 +112,9 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         selectedDate = LocalDate.now();
+        adapter = new SpentAdapter();
+        adapter.setOnSpentActionListener(this);
+        viewModel = new SpentViewModel(getApplication());
         FloatingActionButton fabAddSpend = findViewById(R.id.fabAddSpend);
         container = findViewById(R.id.container);
         container1 = findViewById(R.id.container1);
@@ -169,6 +176,22 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
         });
 
+
+        ItemTouchHelper.SimpleCallback touchHelperCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+                return false;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+                int position = viewHolder.getAdapterPosition();
+                Spent spent = adapter.getSpentAt(position);
+                showDeleteConfirmation(spent);
+            }
+        };
+
+        new ItemTouchHelper(touchHelperCallback).attachToRecyclerView(recyclerView);
 
         rvDates.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
 
@@ -325,7 +348,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
                     // Update UI
                     String monthYear = displayDate.format(DateTimeFormatter.ofPattern("MMM yyyy"));
-                    tvBudgetRemaining.setText(String.format(Locale.getDefault(), "%s: ₱%.2f" , monthYear, remaining));
+                    tvBudgetRemaining.setText(String.format(Locale.getDefault(), "%s: ₱%.2f", monthYear, remaining));
                     tvBudgetAmount.setText(String.format(Locale.getDefault(), "₱%.2f", Math.max(0, budgetAmount)));
 
                     // Set progress (cap at 100% if overspent)
@@ -719,11 +742,12 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         }).start();
     }
 
-    MenuItem menuChart,menuBar,menuBudget;
+    MenuItem menuChart, menuBar, menuBudget;
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.toolbar_menu, menu);
-         menuChart = menu.findItem(R.id.menuChart);
+        menuChart = menu.findItem(R.id.menuChart);
         menuBar = menu.findItem(R.id.menuBar);
         menuBudget = menu.findItem(R.id.menuBudget);
 
@@ -797,4 +821,103 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
         return super.onOptionsItemSelected(item);
     }
+
+    @Override
+    public void onEditSpent(Spent spent) {
+        showEditSpentDialog(spent);
+    }
+
+    @Override
+    public void onDeleteSpent(Spent spent) {
+        showDeleteConfirmation(spent);
+    }
+
+    private void showEditSpentDialog(Spent spent) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LayoutInflater inflater = getLayoutInflater();
+        View dialogView = inflater.inflate(R.layout.modal_add_spent, null);
+        builder.setView(dialogView);
+
+        EditText etAmount = dialogView.findViewById(R.id.etAmount);
+        EditText etCategory = dialogView.findViewById(R.id.etCategory);
+        EditText etDate = dialogView.findViewById(R.id.etDate);
+
+        // Pre-fill with existing values
+        etAmount.setText(String.valueOf(spent.getAmount()));
+        etCategory.setText(spent.getCategory());
+
+        // Format date (assuming spent.date is java.util.Date)
+        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy", Locale.getDefault());
+        etDate.setText(sdf.format(spent.getDate()));
+
+        builder.setTitle("Edit Expense")
+                .setPositiveButton("Save", (dialog, which) -> {
+                    try {
+                        double amount = Double.parseDouble(etAmount.getText().toString());
+                        String category = etCategory.getText().toString();
+
+                        // Parse date
+                        Date date = sdf.parse(etDate.getText().toString());
+
+                        // Update the spent object
+                        spent.setAmount(amount);
+                        spent.setCategory(category);
+                        spent.setDate(date);
+
+                        // Update in database
+                        viewModel.updateSpent(spent);
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Invalid input", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null);
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
+/*    private void showDeleteConfirmation(Spent spent) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete Expense")
+                .setMessage("Are you sure you want to delete this expense?")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    viewModel.deleteSpent(spent);
+                    Toast.makeText(this, "Expense deleted", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }*/
+
+    private void showDeleteConfirmation(Spent spent) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Delete Expense");
+        builder.setMessage("Are you sure you want to delete this expense?");
+
+        builder.setPositiveButton("Delete", (dialog, which) -> {
+            // User confirmed - proceed with deletion
+            deleteSpentItem(spent);
+        });
+
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            // User cancelled - do nothing
+            dialog.dismiss();
+        });
+
+        builder.create().show();
+    }
+
+    private void deleteSpentItem(Spent spent) {
+        adapter.removeSpent(spent);
+
+        // 3. Show snackbar
+        Snackbar.make(recyclerView, "Expense deleted", Snackbar.LENGTH_LONG)
+                .setAction("UNDO", v -> {
+                    // databaseHelper.addSpent(spent);
+                    adapter.restoreSpent(spent); // You'd need to implement this
+                })
+                .show();
+        checkInterval();
+
+    }
+
 }
