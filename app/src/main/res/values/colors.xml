@@ -10,9 +10,10 @@
     <color name="future_date_bg">#E0E0E0</color>
     <color name="future_date_text">#9E9E9E</color>
     <color name="transparent">#009E9E9E</color>
+    <color name="transparent1">#48FFFFFF</color>
     <color name="orange">#FFAB00</color>
-
     <color name="textspend">#DD2C00</color>
+    <color name="green">#43A047</color>
 
     <style name="AmountButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:layout_margin">4dp</item>

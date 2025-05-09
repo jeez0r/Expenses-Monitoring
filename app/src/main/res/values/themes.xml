@@ -6,4 +6,9 @@
     </style>
 
     <style name="Theme.SpendMonitoring" parent="Base.Theme.SpendMonitoring" />
+
+    <style name="WidgetDialogTheme" parent="Theme.AppCompat.Light.Dialog.Alert">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
 </resources>

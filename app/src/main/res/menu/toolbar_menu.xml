@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menuChart"
+        android:icon="@drawable/baseline_pie_chart_24"
+        android:iconTint="@color/white"
+        android:title="Pie"
+        android:visible="true"
+        app:showAsAction="always"
+        />
+
+    <item
+        android:id="@+id/menuBar"
+        android:icon="@drawable/baseline_bar_chart_24"
+        android:iconTint="@color/white"
+        android:title="Bar"
+        android:visible="true"
+        app:showAsAction="always"
+        />
+    <item
+        android:id="@+id/menuBudget"
+        android:icon="@drawable/money_box"
+        android:iconTint="@color/white"
+        android:title="Add"
+        android:visible="true"
+        app:showAsAction="always"
+        />
+</menu>

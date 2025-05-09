@@ -1,40 +1,42 @@
 package com.magnaye.spendmonitoring.Activity;
 
-import static android.view.View.GONE;
-import static android.view.View.VISIBLE;
-
+import android.annotation.SuppressLint;
 import android.app.DatePickerDialog;
-import android.app.Dialog;
-import android.graphics.Typeface;
+import android.appwidget.AppWidgetManager;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.MediaPlayer;
 import android.os.Bundle;
-import android.transition.TransitionManager;
-import android.util.Log;
+import android.text.InputType;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.RadioGroup;
+import android.widget.SearchView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentTransaction;
-import androidx.lifecycle.Observer;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.transition.platform.MaterialFadeThrough;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.magnaye.spendmonitoring.Adapter.DateAdapter;
 import com.magnaye.spendmonitoring.Adapter.SpentAdapter;
 import com.magnaye.spendmonitoring.DatabaseHelper.DatabaseClient;
@@ -42,13 +44,12 @@ import com.magnaye.spendmonitoring.Fragment.CategoryChartFragment;
 import com.magnaye.spendmonitoring.Fragment.MonthlyChartFragment;
 import com.magnaye.spendmonitoring.Model.CalendarDate;
 import com.magnaye.spendmonitoring.Model.Spent;
-import com.magnaye.spendmonitoring.Module.DatePickerHelper;
 import com.magnaye.spendmonitoring.Module.DateRangeDialog;
 import com.magnaye.spendmonitoring.R;
+import com.magnaye.spendmonitoring.Module.AddSpentWidgetProvider;
 
 import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -66,7 +67,6 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
     private DateAdapter dateAdapter;
     private List<CalendarDate> dates = new ArrayList<>();
     private ImageButton btnPrevious, btnNext;
-    private TextView tvMonthYear,tvSelectedDate,tvSpendCustom;
     private LocalDate currentStartDate;
     private LocalDate today = LocalDate.now();
     private DateTimeFormatter monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault());
@@ -78,18 +78,62 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
     private RadioGroup rg_rgInterval;
 
     String interval = "daily";
-    TextView tvTotalSpent;
-    FrameLayout container,container1;
+    TextView tvTotalSpent,toolbarTitle,toolbarTitle1;
+    FrameLayout container, container1;
+
+    private TextView tvBudgetAmount, tvBudgetRemaining;
+    private LinearProgressIndicator progressBudget;
+    private ImageButton btnSetBudget;
+    private SharedPreferences sharedPreferences;
+    // Add these constants at the top of your MainActivity class
+    private static final String BUDGET_PREF = "monthly_budget";
+    private static final String BUDGET_AMOUNT_KEY = "budget_amount";
+    private static final String BUDGET_PREFIX = "budget_"; // Prefix for monthly budget keys
+
+    Toolbar toolbar;
+
+    // In your MainActivity.java
+    // In your MainActivity.java
+    public static void updateWidget(Context context) {
+        Intent intent = new Intent(context, AddSpentWidgetProvider.class);
+        intent.setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE);
+        int[] ids = AppWidgetManager.getInstance(context)
+                .getAppWidgetIds(new ComponentName(context, AddSpentWidgetProvider.class));
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids);
+        context.sendBroadcast(intent);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         selectedDate = LocalDate.now();
         FloatingActionButton fabAddSpend = findViewById(R.id.fabAddSpend);
-        ImageButton ib_showcart = findViewById(R.id.ib_showcart);
-        ImageButton ib_showbar = findViewById(R.id.ib_showbar);
         container = findViewById(R.id.container);
         container1 = findViewById(R.id.container1);
+        toolbar = findViewById(R.id.toolbarGlobal);
+        toolbarTitle1 = findViewById(R.id.toolbarTitle1);
+        toolbarTitle = findViewById(R.id.toolbarTitle);
+        this.setSupportActionBar(toolbar);
+        this.getSupportActionBar().setTitle("");
+
+
+        if (getIntent() != null && getIntent().getAction() != null &&
+                getIntent().getAction().equals("SHOW_ADD_SPENT_DIALOG")) {
+            showAddSpentDialog(LocalDate.now());
+        }
+
+        tvBudgetAmount = findViewById(R.id.tvBudgetAmount);
+        tvBudgetRemaining = findViewById(R.id.tvBudgetRemaining);
+        progressBudget = findViewById(R.id.progressBudget);
+
+        sharedPreferences = getSharedPreferences(BUDGET_PREF, MODE_PRIVATE);
+
+
+        // Initialize budget display
+        updateBudgetDisplay();
+
+
         fabAddSpend.setOnClickListener(view -> {
             if (selectedDate == null) {
                 // If no date selected, use today's date
@@ -98,89 +142,26 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
             showAddSpentDialog(selectedDate);
         });
 
-        ib_showcart.setOnClickListener(view -> {
-            if (container.getVisibility() == View.GONE) {
-                container.setVisibility(View.VISIBLE);
-                Animation slideUp = AnimationUtils.loadAnimation(this, R.anim.slide_up);
-                container.startAnimation(slideUp);
 
-                // Rotate FAB
-                ib_showcart.animate().rotationBy(180f).setDuration(300).start();
-            } else {
-                Animation slideDown = AnimationUtils.loadAnimation(this, R.anim.slide_down);
-                slideDown.setAnimationListener(new Animation.AnimationListener() {
-                    @Override
-                    public void onAnimationStart(Animation animation) {}
-
-                    @Override
-                    public void onAnimationEnd(Animation animation) {
-                        container.setVisibility(View.GONE);
-                    }
-
-                    @Override
-                    public void onAnimationRepeat(Animation animation) {}
-                });
-                container.startAnimation(slideDown);
-
-
-                // Rotate FAB back
-                ib_showcart.animate().rotationBy(180f).setDuration(300).start();
-            }
-        });
-
-        ib_showbar.setOnClickListener(view -> {
-            showCategoryBar();
-
-            if (container1.getVisibility() == View.GONE) {
-
-                container1.setVisibility(View.VISIBLE);
-                Animation slideUp = AnimationUtils.loadAnimation(this, R.anim.slide_up);
-                container1.startAnimation(slideUp);
-
-                // Rotate FAB
-                ib_showcart.animate().rotationBy(180f).setDuration(300).start();
-            } else {
-                Animation slideDown = AnimationUtils.loadAnimation(this, R.anim.slide_down);
-                slideDown.setAnimationListener(new Animation.AnimationListener() {
-                    @Override
-                    public void onAnimationStart(Animation animation) {}
-
-                    @Override
-                    public void onAnimationEnd(Animation animation) {
-                        container1.setVisibility(View.GONE);
-                    }
-
-                    @Override
-                    public void onAnimationRepeat(Animation animation) {}
-                });
-                container1.startAnimation(slideDown);
-
-                // Rotate FAB back
-                ib_showbar.animate().rotationBy(180f).setDuration(300).start();
-            }
-        });
-        tvTotalSpent= findViewById(R.id.tvTotalSpent);
         rg_rgInterval = findViewById(R.id.rg_rgInterval);
         rvDates = findViewById(R.id.rvDates);
         btnPrevious = findViewById(R.id.btnPrevious);
         btnNext = findViewById(R.id.btnNext);
-        tvMonthYear = findViewById(R.id.tvMonthYear);
-        tvSelectedDate = findViewById(R.id.tvSelectedDate);
-        tvSpendCustom = findViewById(R.id.tvSpendCustom);
+
         recyclerView = findViewById(R.id.rvSpend);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new SpentAdapter(spentList);
         recyclerView.setAdapter(adapter);
 
         rg_rgInterval.setOnCheckedChangeListener((group, checkedId) -> {
-            if(checkedId == R.id.rb_custome){
+            if (checkedId == R.id.rb_custome) {
                 showDateRangeDialog();
                 interval = "custom";
-            }else if(checkedId == R.id.rb_daily){
+            } else if (checkedId == R.id.rb_daily) {
                 interval = "daily";
-            }else if(checkedId == R.id.rb_weekly){
+            } else if (checkedId == R.id.rb_weekly) {
                 interval = "weekly";
-            }else if(checkedId == R.id.rb_monthly){
+            } else if (checkedId == R.id.rb_monthly) {
                 interval = "monthly";
             }
 
@@ -192,7 +173,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         rvDates.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
 
         // Initialize with the current week (starting from Monday)
-        currentStartDate = today.with(DayOfWeek.MONDAY);
+        currentStartDate = LocalDate.now().with(DayOfWeek.MONDAY);
         loadWeekDates(currentStartDate);
         updateMonthYearHeader();
         updateButtonStates();
@@ -202,6 +183,14 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
             loadWeekDates(currentStartDate);
             updateMonthYearHeader();
             updateButtonStates();
+
+            // Check if we moved to a different month
+            if (currentStartDate.getMonthValue() != selectedDate.getMonthValue() ||
+                    currentStartDate.getYear() != selectedDate.getYear()) {
+                selectedDate = currentStartDate;
+                updateBudgetDisplay();
+
+            }
         });
 
         btnNext.setOnClickListener(v -> {
@@ -209,12 +198,163 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
             loadWeekDates(currentStartDate);
             updateMonthYearHeader();
             updateButtonStates();
+
+            // Check if we moved to a different month
+            if (currentStartDate.getMonthValue() != selectedDate.getMonthValue() ||
+                    currentStartDate.getYear() != selectedDate.getYear()) {
+                selectedDate = currentStartDate;
+                updateBudgetDisplay();
+
+            }
         });
 
 
         // Load data from database
         checkInterval();
     }
+
+
+    private void showSetBudgetDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Set Monthly Budget");
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setHint("Enter amount");
+
+        // Get current budget if exists
+        String currentMonthKey = getMonthBudgetKey(selectedDate);
+        float currentBudget = sharedPreferences.getFloat(currentMonthKey, 0);
+        if (currentBudget > 0) {
+            input.setText(String.format(Locale.getDefault(), "%.2f", currentBudget));
+        }
+
+        builder.setView(input);
+        builder.setPositiveButton("Save", (dialog, which) -> {
+            try {
+                float budget = Float.parseFloat(input.getText().toString());
+                if (budget > 0) {
+                    // Save for current month
+                    String monthKey = getMonthBudgetKey(selectedDate);
+                    sharedPreferences.edit().putFloat(monthKey, budget).apply();
+
+                    updateBudgetDisplay();
+                    Toast.makeText(this, "Budget set successfully", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show();
+                }
+            } catch (NumberFormatException e) {
+                Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show();
+            }
+        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.show();
+    }
+
+    private void checkPreviousMonthBudgetStatus(LocalDate date) {
+        LocalDate firstDayOfMonth = date.withDayOfMonth(1);
+        LocalDate lastDayOfMonth = date.withDayOfMonth(date.lengthOfMonth());
+
+        Date startDate = Date.from(firstDayOfMonth.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        Date endDate = Date.from(lastDayOfMonth.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
+
+        String monthKey = getMonthBudgetKey(date);
+        float budgetAmount = sharedPreferences.getFloat(monthKey, 0);
+
+        if (budgetAmount <= 0) {
+            // No budget set for this month
+            return;
+        }
+
+        DatabaseClient.getInstance(getApplicationContext())
+                .getAppDatabase()
+                .spentDao()
+                .getTotalSpentByDateRange(startDate, endDate)
+                .observe(this, totalSpent -> {
+                    if (totalSpent == null) totalSpent = 0.0;
+
+                    float remaining = (float) (budgetAmount - totalSpent);
+                    String monthYear = date.format(DateTimeFormatter.ofPattern("MMMM yyyy"));
+
+                    if (remaining >= 0) {
+                      /*  Toast.makeText(this,
+                                monthYear + ": Budget remaining ₱" + String.format(Locale.getDefault(), "%.2f", remaining),
+                                Toast.LENGTH_SHORT).show();*/
+                    } else {
+                        Toast.makeText(this,
+                                monthYear + ": Budget exceeded by ₱" + String.format(Locale.getDefault(), "%.2f", Math.abs(remaining)),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
+
+    // Helper method to create a key for monthly budget storage
+    private String getMonthBudgetKey(LocalDate date) {
+        return BUDGET_PREFIX + date.getYear() + "_" + date.getMonthValue();
+    }
+
+    private void updateBudgetDisplay() {
+        LocalDate displayDate = selectedDate != null ? selectedDate : LocalDate.now();
+        String monthKey = getMonthBudgetKey(displayDate);
+        float budgetAmount = sharedPreferences.getFloat(monthKey, 0);
+
+        if (budgetAmount <= 0) {
+            tvBudgetAmount.setText("Not set");
+            tvBudgetRemaining.setText("Not set");
+            progressBudget.setProgress(0);
+            return;
+        }
+
+        // Get the month's start and end dates for the selected date
+        LocalDate firstDayOfMonth = displayDate.withDayOfMonth(1);
+        LocalDate lastDayOfMonth = displayDate.withDayOfMonth(displayDate.lengthOfMonth());
+
+        Date startDate = Date.from(firstDayOfMonth.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        Date endDate = Date.from(lastDayOfMonth.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
+
+        // Get total spent for the selected month
+        DatabaseClient.getInstance(getApplicationContext())
+                .getAppDatabase()
+                .spentDao()
+                .getTotalSpentByDateRange(endDate, startDate)
+                .observe(this, totalSpent -> {
+                    if (totalSpent == null) totalSpent = 0.0;
+
+                    float remaining = (float) (budgetAmount - totalSpent);
+                    int progress = (int) ((totalSpent / budgetAmount) * 100);
+
+                    // Update UI
+                    String monthYear = displayDate.format(DateTimeFormatter.ofPattern("MMM yyyy"));
+                    tvBudgetRemaining.setText(String.format(Locale.getDefault(), "%s: ₱%.2f" , monthYear, remaining));
+                    tvBudgetAmount.setText(String.format(Locale.getDefault(), "₱%.2f", Math.max(0, budgetAmount)));
+
+                    // Set progress (cap at 100% if overspent)
+                    progressBudget.setProgress(Math.min(progress, 100));
+
+                    // Change color if overspent
+                    if (remaining < 0) {
+                        progressBudget.setIndicatorColor(ContextCompat.getColor(this, R.color.textspend));
+                        tvBudgetRemaining.setTextColor(ContextCompat.getColor(this, R.color.textspend));
+                        tvBudgetRemaining.setText(String.format(Locale.getDefault(), "%s -₱%.2f", monthYear, Math.abs(remaining)));
+                    } else {
+                        progressBudget.setIndicatorColor(ContextCompat.getColor(this, R.color.button_selected));
+                        tvBudgetRemaining.setTextColor(ContextCompat.getColor(this, android.R.color.holo_orange_dark));
+                    }
+
+                    // Show toast if viewing a past month
+                    if (displayDate.getMonthValue() != LocalDate.now().getMonthValue() ||
+                            displayDate.getYear() != LocalDate.now().getYear()) {
+                        String status = remaining >= 0 ?
+                                String.format(Locale.getDefault(), "Budget remaining: ₱%.2f", remaining) :
+                                String.format(Locale.getDefault(), "Budget exceeded by: ₱%.2f", Math.abs(remaining));
+
+                       /* Toast.makeText(this,
+                                displayDate.format(DateTimeFormatter.ofPattern("MMMM yyyy")) + ": " + status,
+                                Toast.LENGTH_SHORT).show();*/
+                    }
+                });
+    }
+
     private void showDateRangeDialog() {
         DateRangeDialog dialog = new DateRangeDialog(this, new DateRangeDialog.DateRangeListener() {
             @Override
@@ -241,20 +381,21 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
     }
 
     private void filterByDateRangeSpent(Date startDate, Date endDate) {
-            DatabaseClient.getInstance(getApplicationContext())
-                    .getAppDatabase()
-                    .spentDao()
-                    .getTotalSpentByDateRange(startDate, endDate)
-                    .observe(this, total -> {
-                        if (total != null) {
-                            String formattedAmount = String.format(Locale.getDefault(), "₱%.2f", total);
-                            tvTotalSpent.setText(formattedAmount);
-                        } else {
-                            tvTotalSpent.setText(String.format(Locale.getDefault(), "₱%.2f", 0.0));
-                        }
+        DatabaseClient.getInstance(getApplicationContext())
+                .getAppDatabase()
+                .spentDao()
+                .getTotalSpentByDateRange(startDate, endDate)
+                .observe(this, total -> {
+                    if (total != null) {
+                        String formattedAmount = String.format(Locale.getDefault(), "₱%.2f", total);
+                        toolbarTitle.setText(formattedAmount);
+                    } else {
+                        toolbarTitle.setText(String.format(Locale.getDefault(), "₱%.2f", 0.0));
+                    }
 
-                    });
+                });
     }
+
     private List<String> getCategoriesFromDatabase() {
         return Arrays.asList(
                 "Food",
@@ -296,12 +437,13 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
                 "Tobacco"
         );
     }
+
     private void updateFilterStatus(Date startDate, Date endDate) {
         SimpleDateFormat sdf = new SimpleDateFormat("MMM d, yyyy", Locale.getDefault());
         SimpleDateFormat sdfe = new SimpleDateFormat("MMM d ", Locale.getDefault());
-        String rangeText = String.format("from %s to %s",
+        String rangeText = String.format("From %s to %s",
                 sdfe.format(endDate), sdf.format(startDate));
-        tvSpendCustom.setText(rangeText);
+        toolbarTitle1.setText(rangeText);
     }
 
     private void loadWeekDates(LocalDate startDate) {
@@ -350,6 +492,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         transaction.commit();
 
     }
+
     private void showCategoryBar() {
         FragmentTransaction transaction1 = getSupportFragmentManager().beginTransaction();
         transaction1.replace(R.id.container1, new MonthlyChartFragment());
@@ -362,7 +505,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         // Get the middle date of the week for better month representation
         LocalDate middleDate = currentStartDate.plusDays(3);
         String monthYear = middleDate.format(monthYearFormatter);
-        tvMonthYear.setText(monthYear);
+
     }
 
     private void updateButtonStates() {
@@ -373,10 +516,10 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
     }
 
     public void onDateClick(int position) {
-        if(interval.equals("custom"))
+        if (interval.equals("custom"))
             Toast.makeText(this, "Custom interval is Selected", Toast.LENGTH_SHORT).show();
 
-       CalendarDate clickedDate = dates.get(position);
+        CalendarDate clickedDate = dates.get(position);
         if (!clickedDate.isFuture()) {
             for (CalendarDate date : dates) {
                 date.setSelected(date == clickedDate);
@@ -384,72 +527,44 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
             dateAdapter.notifyDataSetChanged();
 
             selectedDate = clickedDate.getDate(); // Store the selected date
-            tvSelectedDate.setText(today.equals(selectedDate) ? "Today" :
-             selectedDate.format(DateTimeFormatter.ofPattern("MMMM d, yyyy")));
+/*            tvSelectedDate.setText(today.equals(selectedDate) ? "Today" :
+                    selectedDate.format(DateTimeFormatter.ofPattern("MMMM d, yyyy")));*/
 
 //            showDailyTotalForSelectedDate(selectedDate);
-
+            updateBudgetDisplay();
             checkInterval();
 
         }
     }
 
-    private void showDailyTotalForSelectedDate(LocalDate date) {
-        // Convert LocalDate to Date with time boundaries (whole day)
-        Date startOfDay = Date.from(date.atStartOfDay(ZoneId.systemDefault()).toInstant());
-        Date endOfDay = Date.from(date.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
 
-        DatabaseClient.getInstance(getApplicationContext())
-                .getAppDatabase()
-                .spentDao()
-                .getTotalSpentByDateRange(startOfDay, endOfDay)
-                .observe(this, total -> {
-                    if (total != null) {
-                        String formattedAmount = String.format(Locale.getDefault(),
-                                "Daily Total: ₱%.2f", total);
-                        tvTotalSpent.setText(formattedAmount);
-                    } else {
-                        tvTotalSpent.setText("Daily Total: ₱0.00");
-                    }
-                });
-    }
-
-    private void loadSpentData() {
-        Date startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-        Date endOfDay = Date.from(selectedDate.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
-        DatabaseClient.getInstance(getApplicationContext())
-                .getAppDatabase()
-                .spentDao()
-                .getAllSpentLive(startOfDay,endOfDay)
-                .observe(this, spentList -> adapter.updateData(spentList));
-    }
-
-private void checkInterval(){
-    Date startOfDay = new Date();
-    Date endOfDay = new Date();
-        if(interval.equals("daily")){
-             startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-             endOfDay = Date.from(selectedDate.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
-            filterByDateRange(endOfDay,startOfDay);
+    private void checkInterval() {
+        Date startOfDay = new Date();
+        Date endOfDay = new Date();
+        if (interval.equals("daily")) {
+            startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+            endOfDay = Date.from(selectedDate.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
+            filterByDateRange(endOfDay, startOfDay);
             filterByDateRangeSpent(endOfDay, startOfDay);
-            showCategoryChart(endOfDay,startOfDay);
+            showCategoryChart(endOfDay, startOfDay);
             return;
 
-        }else if(interval.equals("weekly")){
+        } else if (interval.equals("weekly")) {
             startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
             endOfDay = Date.from(selectedDate.plusWeeks(-1).atStartOfDay(ZoneId.systemDefault()).toInstant());
-            filterByDateRange(startOfDay,endOfDay);
+            filterByDateRange(startOfDay, endOfDay);
             filterByDateRangeSpent(startOfDay, endOfDay);
-        }
-        else if(interval.equals("monthly")){
-             startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-             endOfDay = Date.from(selectedDate. plusMonths(-1).atStartOfDay(ZoneId.systemDefault()).toInstant());
-            filterByDateRange(startOfDay,endOfDay);
+        } else if (interval.equals("monthly")) {
+            startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+            endOfDay = Date.from(selectedDate.plusMonths(-1).atStartOfDay(ZoneId.systemDefault()).toInstant());
+            filterByDateRange(startOfDay, endOfDay);
             filterByDateRangeSpent(startOfDay, endOfDay);
         }
 
-    showCategoryChart(startOfDay,endOfDay);
-}
+        showCategoryChart(startOfDay, endOfDay);
+        updateBudgetDisplay();
+    }
+
     private void addToAmount(double amountToAdd, EditText etAmount) {
 
         try {
@@ -467,6 +582,7 @@ private void checkInterval(){
             etAmount.setText(String.format(Locale.getDefault(), "%.2f", amountToAdd));
         }
     }
+
     private void showAddSpentDialog(LocalDate initialDate) {
         selectedDate = initialDate;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -480,10 +596,26 @@ private void checkInterval(){
 
 
         // Amount buttons
-        dialogView.findViewById(R.id.btnAmount10).setOnClickListener(v -> {addToAmount(10,etAmount); animateAmountChange(etAmount);playClickSound();});
-        dialogView.findViewById(R.id.btnAmount100).setOnClickListener(v -> {addToAmount(100, etAmount);animateAmountChange(etAmount);playClickSound();});
-        dialogView.findViewById(R.id.btnAmount500).setOnClickListener(v -> {addToAmount(500, etAmount);animateAmountChange(etAmount);playClickSound();});
-        dialogView.findViewById(R.id.btnAmount1000).setOnClickListener(v -> {addToAmount(1000, etAmount);animateAmountChange(etAmount);playClickSound();});
+        dialogView.findViewById(R.id.btnAmount10).setOnClickListener(v -> {
+            addToAmount(10, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount100).setOnClickListener(v -> {
+            addToAmount(100, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount500).setOnClickListener(v -> {
+            addToAmount(500, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount1000).setOnClickListener(v -> {
+            addToAmount(1000, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
 
         // Category dropdown
         AutoCompleteTextView categoryDropdown = dialogView.findViewById(R.id.etCategory);
@@ -502,7 +634,7 @@ private void checkInterval(){
         // Date picker
 
         // Format the selected date
-        String  formattedDate = selectedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        String formattedDate = selectedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         etDate.setText(formattedDate);
 
         // Date picker - still allow changing if needed
@@ -567,9 +699,11 @@ private void checkInterval(){
                         .scaleY(1f)
                         .setDuration(100));
     }
+
     private void playClickSound() {
         MediaPlayer.create(this, R.raw.click).start();
     }
+
     private void insertSpent(Spent spent) {
         new Thread(() -> {
             DatabaseClient.getInstance(getApplicationContext())
@@ -577,12 +711,90 @@ private void checkInterval(){
                     .spentDao()
                     .insert(spent);
 
-            // Refresh the list
-            runOnUiThread(this::checkInterval);
+            // Refresh the list and update widget
+            runOnUiThread(() -> {
+                checkInterval();
+                updateWidget(getApplicationContext());
+            });
         }).start();
     }
 
+    MenuItem menuChart,menuBar,menuBudget;
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.toolbar_menu, menu);
+         menuChart = menu.findItem(R.id.menuChart);
+        menuBar = menu.findItem(R.id.menuBar);
+        menuBudget = menu.findItem(R.id.menuBudget);
 
 
+        return super.onCreateOptionsMenu(menu);
+    }
 
+    @SuppressLint("MissingPermission")
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menuChart) {
+
+            if (container.getVisibility() == View.GONE) {
+                container.setVisibility(View.VISIBLE);
+                Animation slideUp = AnimationUtils.loadAnimation(this, R.anim.slide_up);
+                container.startAnimation(slideUp);
+            } else {
+                Animation slideDown = AnimationUtils.loadAnimation(this, R.anim.slide_down);
+                slideDown.setAnimationListener(new Animation.AnimationListener() {
+                    @Override
+                    public void onAnimationStart(Animation animation) {
+                    }
+
+                    @Override
+                    public void onAnimationEnd(Animation animation) {
+                        container.setVisibility(View.GONE);
+                    }
+
+                    @Override
+                    public void onAnimationRepeat(Animation animation) {
+                    }
+                });
+                container.startAnimation(slideDown);
+
+            }
+
+        } else if (item.getItemId() == R.id.menuBar) {
+            showCategoryBar();
+
+            if (container1.getVisibility() == View.GONE) {
+
+                container1.setVisibility(View.VISIBLE);
+                Animation slideUp = AnimationUtils.loadAnimation(this, R.anim.slide_up);
+                container1.startAnimation(slideUp);
+
+                // Rotate FAB
+            } else {
+                Animation slideDown = AnimationUtils.loadAnimation(this, R.anim.slide_down);
+                slideDown.setAnimationListener(new Animation.AnimationListener() {
+                    @Override
+                    public void onAnimationStart(Animation animation) {
+                    }
+
+                    @Override
+                    public void onAnimationEnd(Animation animation) {
+                        container1.setVisibility(View.GONE);
+                    }
+
+                    @Override
+                    public void onAnimationRepeat(Animation animation) {
+                    }
+                });
+                container1.startAnimation(slideDown);
+            }
+
+        } else if (item.getItemId() == R.id.menuBudget) {
+            showSetBudgetDialog();
+        } else {
+
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
 }
