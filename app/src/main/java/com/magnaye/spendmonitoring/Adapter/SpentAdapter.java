@@ -17,9 +17,9 @@ import java.util.List;
 import java.util.Locale;
 
 public class SpentAdapter extends RecyclerView.Adapter<SpentAdapter.SpentViewHolder> {
-    private List<Spent> spentList;
+     static List<Spent> spentList;
         private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMMM d, yyyy", Locale.getDefault());
-    private OnSpentActionListener listener;
+    private static OnSpentActionListener listener;
     public SpentAdapter(List<Spent> spentList) {
         this.spentList = spentList;
     }
@@ -28,8 +28,8 @@ public class SpentAdapter extends RecyclerView.Adapter<SpentAdapter.SpentViewHol
     }
 
     public interface OnSpentActionListener {
-        void onEditSpent(Spent spent);
-        void onDeleteSpent(Spent spent);
+        void onEditSpent(Spent spent, int position);
+        void onDeleteSpent(Spent spent, int position);
     }
 
     public void setOnSpentActionListener(OnSpentActionListener listener) {
@@ -60,13 +60,13 @@ public class SpentAdapter extends RecyclerView.Adapter<SpentAdapter.SpentViewHol
 
         holder.btnEdit.setOnClickListener(v -> {
             if (listener != null) {
-                listener.onEditSpent(spent);
+                listener.onEditSpent(spent, position);
             }
         });
 
         holder.btnDelete.setOnClickListener(v -> {
             if (listener != null) {
-                listener.onDeleteSpent(spent);
+                listener.onDeleteSpent(spent, position);
             }
         });
     }
@@ -92,6 +92,17 @@ public class SpentAdapter extends RecyclerView.Adapter<SpentAdapter.SpentViewHol
 
             btnEdit = itemView.findViewById(R.id.btnEdit);
             btnDelete = itemView.findViewById(R.id.btnDelete);
+
+
+            itemView.setOnLongClickListener(v -> {
+                int position = getAdapterPosition();
+                if (position != RecyclerView.NO_POSITION && listener != null) {
+                    Spent spent = spentList.get(position);
+                    listener.onEditSpent(spent, position);
+                    return true; // Consume the event
+                }
+                return false;
+            });
         }
     }
 
@@ -110,12 +121,12 @@ public class SpentAdapter extends RecyclerView.Adapter<SpentAdapter.SpentViewHol
         // Sort the list if needed (e.g., by date)
         Collections.sort(spentList, (s1, s2) -> s2.getDate().compareTo(s1.getDate()));
         // Notify adapter
-        notifyDataSetChanged();
+//        notifyDataSetChanged();
 
         // OR if you want to add it at a specific position:
-        // int position = findInsertPosition(spent);
-        // spentList.add(position, spent);
-        // notifyItemInserted(position);
+         int position = findInsertPosition(spent);
+         spentList.add(position, spent);
+         notifyItemInserted(position);
     }
 
     private int findInsertPosition(Spent newSpent) {

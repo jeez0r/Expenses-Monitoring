@@ -21,4 +21,12 @@
         <item name="strokeColor">@color/button_selected</item>
 
     </style>
+
+    <color name="background">#FFF5F5F5</color>
+    <color name="primary">#FF6200EE</color>
+    <color name="wave_tint">#330062EE</color>
+    <color name="text_secondary">#99000000</color>
+    <color name="progress_track">#E6E6E6</color>
+
+
 </resources>

@@ -117,24 +117,15 @@
         </LinearLayout>
 
 
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/fabAddSpend"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_above="@+id/ll_daily"
-            android:layout_alignParentEnd="true"
-            android:layout_marginBottom="10dp"
-            android:layout_marginEnd="5dp"
-            android:contentDescription="Add Spent"
-            android:src="@drawable/baseline_add_24"
-            app:backgroundTint="@color/button_selected"
-            app:tint="@android:color/white" />
+
 
 
         <LinearLayout
+            android:id="@+id/ll_content"
             android:layout_below="@+id/ll_budget"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:layout_marginBottom="10dp"
             android:layout_above="@+id/ll_daily"
             android:orientation="vertical">
 
@@ -148,6 +139,19 @@
                 android:id="@+id/container1"
                 android:layout_width="match_parent"
                 android:layout_height="300dp" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fabAddSpend"
+                android:layout_width="55dp"
+                android:layout_gravity="end"
+                android:layout_height="60dp"
+                android:layout_marginBottom="10dp"
+                android:layout_marginEnd="5dp"
+                android:contentDescription="Add Spent"
+                android:src="@drawable/baseline_add_24"
+
+                app:backgroundTint="@color/button_selected"
+                app:tint="@android:color/white" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvSpend"
@@ -251,7 +255,7 @@
             android:layout_marginBottom="20dp"
             android:id="@+id/ll_weeks"
             android:layout_width="match_parent"
-           android:layout_alignParentBottom="true"
+            android:layout_alignParentBottom="true"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
@@ -270,7 +274,7 @@
                 android:layout_weight="1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_above="@+id/rlheader" />
+                />
 
 
             <ImageButton
@@ -287,20 +291,7 @@
 
 
 
-        <LinearLayout
-            android:id="@+id/rlheader"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_alignParentBottom="true"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="20dp">
 
-
-
-
-
-
-        </LinearLayout>
 
 
 

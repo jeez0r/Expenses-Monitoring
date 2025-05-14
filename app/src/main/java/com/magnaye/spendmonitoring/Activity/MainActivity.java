@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -22,11 +23,11 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.RadioGroup;
-import android.widget.SearchView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -65,7 +66,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements DateAdapter.OnDateClickListener, SpentAdapter.OnSpentActionListener {
+public class MainActivity extends AppCompatActivity implements DateAdapter.OnDateClickListener{
     private RecyclerView rvDates;
     private DateAdapter dateAdapter;
     private List<CalendarDate> dates = new ArrayList<>();
@@ -105,7 +106,10 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
                 .getAppWidgetIds(new ComponentName(context, AddSpentWidgetProvider.class));
         intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids);
         context.sendBroadcast(intent);
+
+
     }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,7 +117,22 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         setContentView(R.layout.activity_main);
         selectedDate = LocalDate.now();
         adapter = new SpentAdapter();
-        adapter.setOnSpentActionListener(this);
+
+        adapter.setOnSpentActionListener(new SpentAdapter.OnSpentActionListener() {
+            @Override
+            public void onEditSpent(Spent spent, int position) {
+                // Launch edit dialog or activity
+                Log.d("ONEDIT", "onEditSpent: ");
+                showEditSpentDialog(spent, position);
+            }
+
+            @Override
+            public void onDeleteSpent(Spent spent, int position) {
+                showDeleteConfirmation(spent, position);
+            }
+        });
+
+
         viewModel = new SpentViewModel(getApplication());
         FloatingActionButton fabAddSpend = findViewById(R.id.fabAddSpend);
         container = findViewById(R.id.container);
@@ -177,6 +196,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         });
 
 
+
         ItemTouchHelper.SimpleCallback touchHelperCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
@@ -187,9 +207,21 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
             public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
                 int position = viewHolder.getAdapterPosition();
                 Spent spent = adapter.getSpentAt(position);
-                showDeleteConfirmation(spent);
+                showDeleteConfirmation(spent, position);
+            }
+
+            // Add this to make long press work with ItemTouchHelper
+            @Override
+            public void onSelectedChanged(@Nullable RecyclerView.ViewHolder viewHolder, int actionState) {
+                super.onSelectedChanged(viewHolder, actionState);
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    // This enables the long press drag (even though we're not using drag)
+                    // It helps with long press detection
+                }
             }
         };
+
+// Attach to RecyclerView
 
         new ItemTouchHelper(touchHelperCallback).attachToRecyclerView(recyclerView);
 
@@ -574,12 +606,12 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
         } else if (interval.equals("weekly")) {
             startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-            endOfDay = Date.from(selectedDate.plusWeeks(-1).atStartOfDay(ZoneId.systemDefault()).toInstant());
+            endOfDay = Date.from(selectedDate.plusWeeks(-1).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
             filterByDateRange(startOfDay, endOfDay);
             filterByDateRangeSpent(startOfDay, endOfDay);
         } else if (interval.equals("monthly")) {
             startOfDay = Date.from(selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-            endOfDay = Date.from(selectedDate.plusMonths(-1).atStartOfDay(ZoneId.systemDefault()).toInstant());
+            endOfDay = Date.from(selectedDate.plusMonths(-1).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
             filterByDateRange(startOfDay, endOfDay);
             filterByDateRangeSpent(startOfDay, endOfDay);
         }
@@ -614,7 +646,8 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         builder.setView(dialogView);
 
         EditText etAmount = dialogView.findViewById(R.id.etAmount);
-        EditText etCategory = dialogView.findViewById(R.id.etCategory);
+        AutoCompleteTextView categoryDropdown = dialogView.findViewById(R.id.etCategory);
+
         EditText etDate = dialogView.findViewById(R.id.etDate);
 
 
@@ -641,7 +674,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         });
 
         // Category dropdown
-        AutoCompleteTextView categoryDropdown = dialogView.findViewById(R.id.etCategory);
+
         ArrayAdapter<String> categoryAdapter = new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_dropdown_item_1line,
@@ -682,14 +715,14 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
                 .setPositiveButton("Save", (dialog, which) -> {
                     // Validate inputs
                     if (etAmount.getText().toString().isEmpty() ||
-                            etCategory.getText().toString().isEmpty()) {
+                            categoryDropdown.getText().toString().isEmpty()) {
                         Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
                     try {
                         double amount = Double.parseDouble(etAmount.getText().toString());
-                        String category = etCategory.getText().toString();
+                        String category = categoryDropdown.getText().toString();
 
                         // Convert LocalDate to Date for your Spent object
                         Date date = Date.from(selectedDate.atStartOfDay()
@@ -822,39 +855,53 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onEditSpent(Spent spent) {
-        showEditSpentDialog(spent);
-    }
 
-    @Override
-    public void onDeleteSpent(Spent spent) {
-        showDeleteConfirmation(spent);
-    }
 
-    private void showEditSpentDialog(Spent spent) {
+    private void showEditSpentDialog(Spent spent, int position) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LayoutInflater inflater = getLayoutInflater();
         View dialogView = inflater.inflate(R.layout.modal_add_spent, null);
         builder.setView(dialogView);
 
         EditText etAmount = dialogView.findViewById(R.id.etAmount);
-        EditText etCategory = dialogView.findViewById(R.id.etCategory);
+        AutoCompleteTextView categoryDropdown = dialogView.findViewById(R.id.etCategory);
         EditText etDate = dialogView.findViewById(R.id.etDate);
+
+        // Amount buttons
+        dialogView.findViewById(R.id.btnAmount10).setOnClickListener(v -> {
+            addToAmount(10, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount100).setOnClickListener(v -> {
+            addToAmount(100, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount500).setOnClickListener(v -> {
+            addToAmount(500, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
+        dialogView.findViewById(R.id.btnAmount1000).setOnClickListener(v -> {
+            addToAmount(1000, etAmount);
+            animateAmountChange(etAmount);
+            playClickSound();
+        });
 
         // Pre-fill with existing values
         etAmount.setText(String.valueOf(spent.getAmount()));
-        etCategory.setText(spent.getCategory());
+        categoryDropdown.setText(spent.getCategory());
 
         // Format date (assuming spent.date is java.util.Date)
-        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy", Locale.getDefault());
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
         etDate.setText(sdf.format(spent.getDate()));
 
         builder.setTitle("Edit Expense")
                 .setPositiveButton("Save", (dialog, which) -> {
                     try {
                         double amount = Double.parseDouble(etAmount.getText().toString());
-                        String category = etCategory.getText().toString();
+                        String category = categoryDropdown.getText().toString();
 
                         // Parse date
                         Date date = sdf.parse(etDate.getText().toString());
@@ -866,29 +913,52 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
                         // Update in database
                         viewModel.updateSpent(spent);
+                        adapter.notifyItemChanged(position);
                     } catch (Exception e) {
                         Toast.makeText(this, "Invalid input", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("Cancel", null);
 
+
+        ArrayAdapter<String> categoryAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_dropdown_item_1line,
+                getCategoriesFromDatabase() // Implement this to get existing categories
+        );
+
+
+        categoryDropdown.setAdapter(categoryAdapter);
+        categoryDropdown.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                categoryDropdown.showDropDown();
+            }
+        });
+
+        etDate.setOnClickListener(v -> {
+            Calendar calendar = Calendar.getInstance();
+            calendar.set(selectedDate.getYear(),
+                    selectedDate.getMonthValue() - 1,
+                    selectedDate.getDayOfMonth());
+
+            new DatePickerDialog(this,
+                    (view, year, month, day) -> {
+                        selectedDate = LocalDate.of(year, month + 1, day);
+                        etDate.setText(selectedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+            ).show();
+        });
+
         AlertDialog dialog = builder.create();
         dialog.show();
     }
 
-/*    private void showDeleteConfirmation(Spent spent) {
-        new AlertDialog.Builder(this)
-                .setTitle("Delete Expense")
-                .setMessage("Are you sure you want to delete this expense?")
-                .setPositiveButton("Delete", (dialog, which) -> {
-                    viewModel.deleteSpent(spent);
-                    Toast.makeText(this, "Expense deleted", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }*/
 
-    private void showDeleteConfirmation(Spent spent) {
+
+    private void showDeleteConfirmation(Spent spent, int position) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Delete Expense");
         builder.setMessage("Are you sure you want to delete this expense?");
@@ -900,6 +970,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
         builder.setNegativeButton("Cancel", (dialog, which) -> {
             // User cancelled - do nothing
+            adapter.notifyItemChanged(position);
             dialog.dismiss();
         });
 
@@ -908,6 +979,7 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
 
     private void deleteSpentItem(Spent spent) {
         adapter.removeSpent(spent);
+        viewModel.deleteSpent(spent);
 
         // 3. Show snackbar
         Snackbar.make(recyclerView, "Expense deleted", Snackbar.LENGTH_LONG)
@@ -919,5 +991,6 @@ public class MainActivity extends AppCompatActivity implements DateAdapter.OnDat
         checkInterval();
 
     }
+
 
 }
